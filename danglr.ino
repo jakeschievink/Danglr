@@ -1,66 +1,125 @@
 #include <LiquidCrystal.h>
+#include <ChibiOS_AVR.h>
+
 #define BACKLIGHT_PIN 10
-#define MOTION_PIN 14
+#define MOTION_PIN 13
 #define SPEAKER_PIN 6
-#define THIRD_EYE 13
+
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
-char* sayings[] = {"You're my papa", "I love you", "Great job", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful"};
+char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "Great job", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful", "We made it!", "Keep on going!", "Perfect", "Great to see you!"};
+
+volatile boolean sensed = false;
+
+static WORKING_AREA(waTh1, 100);
+static WORKING_AREA(waTh2, 100);
+static WORKING_AREA(waTh3, 100);
+SEMAPHORE_DECL(speakerSem, 0);
+
+msg_t mainThread(void *args){
+    while(1){
+        Serial.println(digitalRead(MOTION_PIN));
+        if(digitalRead(MOTION_PIN)){
+            chSemSignal(&speakerSem);
+            sensed = true;
+            chThdSleepMilliseconds(4000);
+        }else{
+            sensed = false;
+            Serial.println("Shifting");
+        }
+    }
+}
+
+msg_t screenThread(void *args){
+    while(1){
+        if(sensed){
+            lcd.clear(); 
+            print_sayings();
+            chThdSleepMilliseconds(4000);
+            lcd.clear(); 
+        }else{
+            shift_eyes();
+        }
+    }
+}
+
+msg_t speakerThread(void *args){
+    while(1){
+        chSemWait(&speakerSem);
+        volatile int endNote = 100 + random(500);
+        tone(SPEAKER_PIN, endNote); 
+        chThdSleepMilliseconds(200+random(500));
+        tone(SPEAKER_PIN, endNote+random(500)); 
+        chThdSleepMilliseconds(200+random(500));
+        tone(SPEAKER_PIN, endNote+random(500)-250); 
+        chThdSleepMilliseconds(2000);
+        noTone(SPEAKER_PIN);
+    }
+}
+
 void setup(){
     Serial.begin(9600);
+   chBegin(chSetup);
+    while(1);
+}
+
+void chSetup(){
     pinMode(BACKLIGHT_PIN, OUTPUT);
     pinMode(MOTION_PIN, INPUT);
     lcd.begin(16, 2);
-    analogWrite(BACKLIGHT_PIN, 255);
+    lcd.print("LOADING...");
+    fade_in(BACKLIGHT_PIN);
+    chThdSleepMilliseconds(2000);
+    lcd.clear();
+    chThdCreateStatic(waTh1, sizeof(waTh1), NORMALPRIO, mainThread, NULL);
+    chThdCreateStatic(waTh2, sizeof(waTh2), NORMALPRIO, speakerThread, NULL);
+    chThdCreateStatic(waTh3, sizeof(waTh3), NORMALPRIO, screenThread, NULL);
 }
-void loop(){
+
+void shift_eyes(){
+    static long start_time = 0;
+    long time = millis();
+    if(time < start_time + 1000){
         draw_large_eye_center(0);
         draw_large_eye_center(12);
-        delay(1000);
+    }else if(time < start_time + 2000){
         draw_large_eye_left(0);
         draw_large_eye_left(12);
-        delay(1000);
+    }else if(time < start_time + 3000){
         draw_large_eye_center(0);
         draw_large_eye_center(12);
-        delay(100);
+    }else if(time < start_time + 4000){
         draw_large_eye_right(0);
         draw_large_eye_right(12);
-        delay(1000);
-        play_sound();
-        lcd.clear();
-        lcd.print(sayings[random(sizeof(sayings)/sizeof(sayings[0]))]);
-        delay(1000);
-        noTone(SPEAKER_PIN);
-        lcd.clear();
-}
-void play_sound(){
-    for(int i = 50; i<1000; i*=1.2){
-        tone(SPEAKER_PIN, i+random(10), random(10));
-        delay(10);
+    }else if(time < start_time + 5000){
+        start_time = millis();
+    }else{
+        start_time = millis();
     }
 }
-void third_eye_pulse(){
-    fade_in(THIRD_EYE);
-    fade_out(THIRD_EYE);
+
+void print_sayings(){
+    lcd.setCursor(0,0);
+    lcd.print(sayings[random(sizeof(sayings)/sizeof(sayings[0]))]);
+    if(random(200) > 100){
+        lcd.setCursor(0,1);
+        lcd.print(sayings[random(sizeof(sayings)/sizeof(sayings[0]))]);
+    }
 }
+
+void fade_out(int pin){
+    for(int i = 255; i > 1; i--){
+        analogWrite(pin, i);
+        chThdSleepMilliseconds(5);
+    }
+}
+
 void fade_in(int pin){
     for(int i = 0; i < 251; i++){
         analogWrite(pin, i);
-        delay(10);
+        chThdSleepMilliseconds(5);
     }
 }
-void draw_small_eye(int line, int charpos){
-  byte eye[8] = { B00000,
-                B01110,
-                B10001,
-                B10101,
-                B01110,
-                B00000,
-                B00000,
-                B00000 };
-  lcd.createChar((byte)0, eye);
-  lcd.setCursor(charpos, line);
-  lcd.write((byte)0);
-}
+
 void draw_large_eye_center(int charpos){
     byte eye1[8] = {B00000,
                     B00000,
@@ -425,9 +484,5 @@ void draw_large_eye_right(int charpos){
   lcd.setCursor(charpos+3, 1);
   lcd.write((byte)8);
 }
-void fade_out(int pin){
-    for(int i = 255; i > 1; i--){
-        analogWrite(pin, i);
-        delay(10);
-    }
-}
+
+void loop(){}
