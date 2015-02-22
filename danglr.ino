@@ -1,12 +1,12 @@
-#include <LiquidCrystal.h>
 #include <ChibiOS_AVR.h>
+#include <LiquidCrystal.h>
 
 #define BACKLIGHT_PIN 10
 #define MOTION_PIN 13
 #define SPEAKER_PIN 6
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
-char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "Great job", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful", "We made it!", "Keep on going!", "Perfect", "Great to see you!"};
+char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful", "We made it!", "Keep on going!", "Perfect", "Great to see you!", "Let's cook eggs!"};
 
 volatile boolean sensed = false;
 
@@ -14,7 +14,7 @@ static WORKING_AREA(waTh1, 100);
 static WORKING_AREA(waTh2, 100);
 static WORKING_AREA(waTh3, 100);
 SEMAPHORE_DECL(speakerSem, 0);
-
+Thread *screenT;
 msg_t mainThread(void *args){
     while(1){
         Serial.println(digitalRead(MOTION_PIN));
@@ -22,6 +22,8 @@ msg_t mainThread(void *args){
             chSemSignal(&speakerSem);
             sensed = true;
             chThdSleepMilliseconds(4000);
+            sensed = false;
+            chThdSleepMilliseconds(3000);
         }else{
             sensed = false;
             Serial.println("Shifting");
@@ -72,9 +74,14 @@ void chSetup(){
     lcd.clear();
     chThdCreateStatic(waTh1, sizeof(waTh1), NORMALPRIO, mainThread, NULL);
     chThdCreateStatic(waTh2, sizeof(waTh2), NORMALPRIO, speakerThread, NULL);
-    chThdCreateStatic(waTh3, sizeof(waTh3), NORMALPRIO, screenThread, NULL);
+    screenT = chThdCreateStatic(waTh3, sizeof(waTh3), NORMALPRIO, screenThread, NULL);
 }
 
+void close_eyes(){
+    lcd.clear();
+    draw_closed_eye(0);
+    draw_closed_eye(12);
+}
 void shift_eyes(){
     static long start_time = 0;
     long time = millis();
@@ -210,6 +217,52 @@ void draw_large_eye_center(int charpos){
   lcd.write((byte)7);
   lcd.setCursor(charpos+3, 1);
   lcd.write((byte)8);
+}
+void draw_closed_eye(int charpos){
+    byte eye1[8] = {B00100,
+        B00011,
+        B00000,
+        B00000,
+        B00000,
+        B00000,
+        B00000,
+        B00000};
+    byte eye2[8] = {B00000,
+        B00000,
+        B11000,
+        B00111,
+        B00000,
+        B00000,
+        B00000,
+        B00000};
+    byte eye3[8] = {B00000,
+        B00000,
+        B00011,
+        B11100,
+        B00000,
+        B00000,
+        B00000,
+        B00000};
+    byte eye4[8] = {B00100,
+        B11000,
+        B00000,
+        B00000,
+        B00000,
+        B00000,
+        B00000,
+        B00000};
+    lcd.createChar((byte)1, eye1);
+    lcd.createChar((byte)2, eye2);
+    lcd.createChar((byte)3, eye3);
+    lcd.createChar((byte)4, eye4);
+  lcd.setCursor(charpos, 1);
+  lcd.write((byte)1);
+  lcd.setCursor(charpos+1, 1);
+  lcd.write((byte)2);
+  lcd.setCursor(charpos+2, 1);
+  lcd.write((byte)3);
+  lcd.setCursor(charpos+3, 1);
+  lcd.write((byte)4);
 }
 void draw_large_eye(int charpos){
     byte eye1[8] = {B00000,
