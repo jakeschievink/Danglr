@@ -4,11 +4,12 @@
 #define BACKLIGHT_PIN 10
 #define MOTION_PIN 13
 #define SPEAKER_PIN 6
+#define DEBUG
+
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful", "We made it!", "Keep on going!", "Perfect", "Great to see you!", "Let's cook eggs!"};
 
-volatile boolean sensed = false;
 
 static WORKING_AREA(waTh1, 100);
 static WORKING_AREA(waTh2, 100);
@@ -20,20 +21,23 @@ msg_t mainThread(void *args){
         Serial.println(digitalRead(MOTION_PIN));
         if(digitalRead(MOTION_PIN)){
             chSemSignal(&speakerSem);
-            sensed = true;
+            chMsgSend(screenT, (msg_t)"A");
             chThdSleepMilliseconds(4000);
-            sensed = false;
-            chThdSleepMilliseconds(3000);
         }else{
-            sensed = false;
+            chMsgSend(screenT, (msg_t)"B");
             Serial.println("Shifting");
         }
     }
 }
 
 msg_t screenThread(void *args){
+    msg_t msg;
+    Thread *tp;
     while(1){
-        if(sensed){
+        tp = chMsgWait();
+        msg = chMsgGet(tp);
+        chMsgRelease(tp, msg);
+        if((char*)msg == "A"){
             lcd.clear(); 
             print_sayings();
             chThdSleepMilliseconds(4000);
@@ -47,6 +51,9 @@ msg_t screenThread(void *args){
 msg_t speakerThread(void *args){
     while(1){
         chSemWait(&speakerSem);
+#ifdef DEBUG
+        Serial.println("Speakers playing but debug is on");
+#else
         volatile int endNote = 100 + random(500);
         tone(SPEAKER_PIN, endNote); 
         chThdSleepMilliseconds(200+random(500));
@@ -55,6 +62,7 @@ msg_t speakerThread(void *args){
         tone(SPEAKER_PIN, endNote+random(500)-250); 
         chThdSleepMilliseconds(2000);
         noTone(SPEAKER_PIN);
+#endif
     }
 }
 
