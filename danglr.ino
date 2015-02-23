@@ -17,15 +17,30 @@ static WORKING_AREA(waTh3, 100);
 SEMAPHORE_DECL(speakerSem, 0);
 Thread *screenT;
 msg_t mainThread(void *args){
+    boolean asleep = false;
     while(1){
         Serial.println(digitalRead(MOTION_PIN));
-        if(digitalRead(MOTION_PIN)){
+        if(digitalRead(MOTION_PIN) && !asleep){
             chSemSignal(&speakerSem);
             chMsgSend(screenT, (msg_t)"A");
             chThdSleepMilliseconds(4000);
-        }else{
+        }else if(random(1000) > 980){
             chMsgSend(screenT, (msg_t)"B");
-            Serial.println("Shifting");
+            asleep = true;
+            chThdSleepMilliseconds(random(5000));
+        }else{
+            chMsgSend(screenT, (msg_t)"C");
+            if(asleep){
+                chThdSleepMilliseconds(500);
+                chMsgSend(screenT, (msg_t)"B");
+                chThdSleepMilliseconds(500);
+                chMsgSend(screenT, (msg_t)"C");
+                chThdSleepMilliseconds(1000);
+                chMsgSend(screenT, (msg_t)"B");
+                chThdSleepMilliseconds(1000);
+                chMsgSend(screenT, (msg_t)"C");
+                asleep = false;
+            }
         }
     }
 }
@@ -42,7 +57,9 @@ msg_t screenThread(void *args){
             print_sayings();
             chThdSleepMilliseconds(4000);
             lcd.clear(); 
-        }else{
+        }else if((char*)msg == "B"){
+            close_eyes();
+        }else if((char*)msg == "C"){
             shift_eyes();
         }
     }
