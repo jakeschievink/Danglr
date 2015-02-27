@@ -4,7 +4,7 @@
 #define BACKLIGHT_PIN 10
 #define MOTION_PIN 13
 #define SPEAKER_PIN 6
-#define DEBUG
+//#define DEBUG
 
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
@@ -14,16 +14,18 @@ char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "Y
 static WORKING_AREA(waTh1, 100);
 static WORKING_AREA(waTh2, 100);
 static WORKING_AREA(waTh3, 100);
+static WORKING_AREA(waTh4, 100);
+
 SEMAPHORE_DECL(speakerSem, 0);
 Thread *screenT;
 msg_t mainThread(void *args){
-    boolean asleep = false;
+    boolean asleep = true;
     while(1){
         Serial.println(digitalRead(MOTION_PIN));
         if(digitalRead(MOTION_PIN) && !asleep){
             chSemSignal(&speakerSem);
             chMsgSend(screenT, (msg_t)"A");
-            chThdSleepMilliseconds(4000);
+            chThdSleepMilliseconds(6000);
         }else if(random(1000) > 980){
             chMsgSend(screenT, (msg_t)"B");
             asleep = true;
@@ -31,14 +33,15 @@ msg_t mainThread(void *args){
         }else{
             chMsgSend(screenT, (msg_t)"C");
             if(asleep){
+                chThdSleepMilliseconds(200);
+                chMsgSend(screenT, (msg_t)"B");
+                chThdSleepMilliseconds(200);
+                chMsgSend(screenT, (msg_t)"C");
                 chThdSleepMilliseconds(500);
                 chMsgSend(screenT, (msg_t)"B");
                 chThdSleepMilliseconds(500);
                 chMsgSend(screenT, (msg_t)"C");
-                chThdSleepMilliseconds(1000);
-                chMsgSend(screenT, (msg_t)"B");
-                chThdSleepMilliseconds(1000);
-                chMsgSend(screenT, (msg_t)"C");
+                chThdSleepMilliseconds(4000);
                 asleep = false;
             }
         }
@@ -53,8 +56,10 @@ msg_t screenThread(void *args){
         msg = chMsgGet(tp);
         chMsgRelease(tp, msg);
         if((char*)msg == "A"){
+            fade_out(BACKLIGHT_PIN);
             lcd.clear(); 
             print_sayings();
+            fade_in(BACKLIGHT_PIN);
             chThdSleepMilliseconds(4000);
             lcd.clear(); 
         }else if((char*)msg == "B"){
@@ -107,6 +112,19 @@ void close_eyes(){
     draw_closed_eye(0);
     draw_closed_eye(12);
 }
+
+msg_t shift_eyes_sleep(){
+        draw_large_eye_left(0);
+        draw_large_eye_left(12);
+        chThdSleepMilliseconds(1000);
+        draw_large_eye_center(0);
+        draw_large_eye_center(12);
+        chThdSleepMilliseconds(1000);
+        draw_large_eye_right(0);
+        draw_large_eye_right(12);
+        chThdSleepMilliseconds(1000);
+}
+
 void shift_eyes(){
     static long start_time = 0;
     long time = millis();
@@ -139,16 +157,14 @@ void print_sayings(){
 }
 
 void fade_out(int pin){
-    for(int i = 255; i > 1; i--){
+    for(int i = 251; i > 1; i-=5){
         analogWrite(pin, i);
-        chThdSleepMilliseconds(5);
     }
 }
 
 void fade_in(int pin){
-    for(int i = 0; i < 251; i++){
+    for(int i = 0; i < 251; i+=5){
         analogWrite(pin, i);
-        chThdSleepMilliseconds(5);
     }
 }
 
