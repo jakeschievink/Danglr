@@ -1,11 +1,37 @@
+/*TODO 
+  *switch to mailboxes for screen/serial communication
+  *make all screen interactions in main part of screen (main will just send messages)
+  *random number thread 
+*/
 #include <ChibiOS_AVR.h>
 #include <LiquidCrystal.h>
 
 #define BACKLIGHT_PIN 10
 #define MOTION_PIN 13
 #define SPEAKER_PIN 6
-//#define DEBUG
+#define DEBUG
+/*
+Pin map:
+    Screen
+        1 -> GND
+        2 -> 5V
+        3 -> POT(Contrast)
+        4 -> D12
+        5 -> GND
+        6 -> D11
+        11 -> D5
+        12 -> D4 
+        13 -> D3
+        14 -> D2
+        15 -> D10(Backlight Control)
+    Motion Sensor 
+       OUT -> D13
 
+    Speaker
+        1 -> GND
+        2 -> D6
+
+   */
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "You Won!", "Congratulations", "I missed you", "good", "You're beautiful", "We made it!", "Keep on going!", "Perfect", "Great to see you!", "Let's cook eggs!"};
@@ -14,18 +40,27 @@ char* sayings[] = {"You're my papa", "See you soon.", "Hello!", "I love you", "Y
 static WORKING_AREA(waTh1, 100);
 static WORKING_AREA(waTh2, 100);
 static WORKING_AREA(waTh3, 100);
-static WORKING_AREA(waTh4, 100);
 
+MUTEX_DECL(screenMutex);
 SEMAPHORE_DECL(speakerSem, 0);
+
 Thread *screenT;
+
 msg_t mainThread(void *args){
     boolean asleep = true;
+    pinMode(BACKLIGHT_PIN, OUTPUT);
+    pinMode(MOTION_PIN, INPUT);
+    lcd.begin(16, 2);
+    lcd.print("LOADING...");
+    fade_in(BACKLIGHT_PIN);
+    chThdSleepMilliseconds(2000);
+    lcd.clear();
     while(1){
         Serial.println(digitalRead(MOTION_PIN));
         if(digitalRead(MOTION_PIN) && !asleep){
             chSemSignal(&speakerSem);
             chMsgSend(screenT, (msg_t)"A");
-            chThdSleepMilliseconds(6000);
+            asleep = true;
         }else if(random(1000) > 980){
             chMsgSend(screenT, (msg_t)"B");
             asleep = true;
@@ -33,15 +68,15 @@ msg_t mainThread(void *args){
         }else{
             chMsgSend(screenT, (msg_t)"C");
             if(asleep){
-                chThdSleepMilliseconds(200);
+                chThdSleepMilliseconds(400);
                 chMsgSend(screenT, (msg_t)"B");
-                chThdSleepMilliseconds(200);
+                chThdSleepMilliseconds(400);
                 chMsgSend(screenT, (msg_t)"C");
                 chThdSleepMilliseconds(500);
                 chMsgSend(screenT, (msg_t)"B");
                 chThdSleepMilliseconds(500);
                 chMsgSend(screenT, (msg_t)"C");
-                chThdSleepMilliseconds(4000);
+                chThdSleepMilliseconds(2000);
                 asleep = false;
             }
         }
@@ -54,7 +89,6 @@ msg_t screenThread(void *args){
     while(1){
         tp = chMsgWait();
         msg = chMsgGet(tp);
-        chMsgRelease(tp, msg);
         if((char*)msg == "A"){
             fade_out(BACKLIGHT_PIN);
             lcd.clear(); 
@@ -62,9 +96,12 @@ msg_t screenThread(void *args){
             fade_in(BACKLIGHT_PIN);
             chThdSleepMilliseconds(4000);
             lcd.clear(); 
+            chMsgRelease(tp, msg);
         }else if((char*)msg == "B"){
+            chMsgRelease(tp, msg);
             close_eyes();
         }else if((char*)msg == "C"){
+            chMsgRelease(tp, msg);
             shift_eyes();
         }
     }
@@ -95,13 +132,6 @@ void setup(){
 }
 
 void chSetup(){
-    pinMode(BACKLIGHT_PIN, OUTPUT);
-    pinMode(MOTION_PIN, INPUT);
-    lcd.begin(16, 2);
-    lcd.print("LOADING...");
-    fade_in(BACKLIGHT_PIN);
-    chThdSleepMilliseconds(2000);
-    lcd.clear();
     chThdCreateStatic(waTh1, sizeof(waTh1), NORMALPRIO, mainThread, NULL);
     chThdCreateStatic(waTh2, sizeof(waTh2), NORMALPRIO, speakerThread, NULL);
     screenT = chThdCreateStatic(waTh3, sizeof(waTh3), NORMALPRIO, screenThread, NULL);
@@ -113,19 +143,8 @@ void close_eyes(){
     draw_closed_eye(12);
 }
 
-msg_t shift_eyes_sleep(){
-        draw_large_eye_left(0);
-        draw_large_eye_left(12);
-        chThdSleepMilliseconds(1000);
-        draw_large_eye_center(0);
-        draw_large_eye_center(12);
-        chThdSleepMilliseconds(1000);
-        draw_large_eye_right(0);
-        draw_large_eye_right(12);
-        chThdSleepMilliseconds(1000);
-}
-
 void shift_eyes(){
+    chMtxLock(&screenMutex);
     static long start_time = 0;
     long time = millis();
     if(time < start_time + 1000){
@@ -145,26 +164,31 @@ void shift_eyes(){
     }else{
         start_time = millis();
     }
+    chMtxUnlock();
 }
 
 void print_sayings(){
+    chMtxLock(&screenMutex);
     lcd.setCursor(0,0);
     lcd.print(sayings[random(sizeof(sayings)/sizeof(sayings[0]))]);
     if(random(200) > 100){
         lcd.setCursor(0,1);
         lcd.print(sayings[random(sizeof(sayings)/sizeof(sayings[0]))]);
     }
+    chMtxUnlock();
 }
 
 void fade_out(int pin){
     for(int i = 251; i > 1; i-=5){
         analogWrite(pin, i);
+        chThdSleepMilliseconds(2);
     }
 }
 
 void fade_in(int pin){
     for(int i = 0; i < 251; i+=5){
         analogWrite(pin, i);
+        chThdSleepMilliseconds(2);
     }
 }
 
