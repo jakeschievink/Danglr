@@ -10,6 +10,7 @@
 #define MOTION_PIN 13
 #define SPEAKER_PIN 6
 #define DEBUG
+#define PRESENTATION //if defined, does not go to sleep
 /*
 Pin map:
     Screen
